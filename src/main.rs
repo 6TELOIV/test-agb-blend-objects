@@ -1,23 +1,58 @@
-// Games made using `agb` are no_std which means you don't have access to the standard
-// rust library. This is because the game boy advance doesn't have an operating
-// system, so most of the content of the standard library doesn't apply.
+//! An example of using blending to make an object darken. Only the objects marked with
+//! GraphicsMode::AlphaBlending will show as darkened.
 #![no_std]
-// `agb` defines its own `main` function, so you must declare your game's main function
-// using the #[agb::entry] proc macro. Failing to do so will cause failure in linking
-// which won't be a particularly clear error message.
 #![no_main]
-// This is required to allow writing tests
 #![cfg_attr(test, feature(custom_test_frameworks))]
 #![cfg_attr(test, reexport_test_harness_main = "test_main")]
 #![cfg_attr(test, test_runner(agb::test_runner::test_runner))]
 
-// By default no_std crates don't get alloc, so you won't be able to use things like Vec
-// until you declare the extern crate. `agb` provides an allocator so it will all work
-extern crate alloc;
+use agb::{
+    display::{
+        Priority,
+        object::{GraphicsMode, Object},
+        tiled::{RegularBackground, RegularBackgroundSize},
+    },
+    fixnum::{Num, num},
+    include_aseprite, include_background_gfx,
+};
 
-// The main function must take 1 arguments and never returns, and must be marked with
-// the #[agb::entry] macro.
+include_aseprite!(mod sprites, "gfx/crab.aseprite");
+include_background_gfx!(mod background, BEACH => deduplicate "gfx/beach-background.aseprite");
+
 #[agb::entry]
-fn main(gba: agb::Gba) -> ! {
-    agb::no_game(gba);
+fn main(mut gba: agb::Gba) -> ! {
+    let mut gfx = gba.graphics.get();
+    gfx.set_background_palettes(background::PALETTES);
+
+    let mut bg = RegularBackground::new(
+        Priority::P0,
+        RegularBackgroundSize::Background32x32,
+        background::BEACH.tiles.format(),
+    );
+    bg.fill_with(&background::BEACH);
+
+    let mut darken_amount = num!(0);
+
+    loop {
+        let mut frame = gfx.frame();
+        bg.show(&mut frame);
+
+        Object::new(sprites::IDLE.sprite(0))
+            .set_graphics_mode(GraphicsMode::Normal)
+            .set_pos((100, 100))
+            .show(&mut frame);
+
+        Object::new(sprites::IDLE.sprite(0))
+            .set_graphics_mode(GraphicsMode::AlphaBlending)
+            .set_pos((150, 100))
+            .show(&mut frame);
+
+        frame
+            .blend()
+            .darken(darken_amount)
+            .enable_object();
+        darken_amount = (darken_amount + Num::from_raw(1)) % num!(1);
+
+        frame.commit();
+    }
 }
